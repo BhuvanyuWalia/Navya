@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Naval Navigator — DDQN Ship Navigation AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Noto+Serif:ital,wght@0,400;0,600;1,400&family=Fira+Code:wght@300;400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ocean-deep:  #060d1a;
+  --ocean-mid:   #0a1628;
+  --ocean-surf:  #0d2040;
+  --panel:       #0b1525;
+  --panel2:      #0e1c30;
+  --border:      #1a2d45;
+  --border2:     #22395a;
+  --gold:        #f0b429;
+  --gold2:       #ffd166;
+  --cyan:        #06b6d4;
+  --teal:        #14b8a6;
+  --coral:       #f43f5e;
+  --green:       #22c55e;
+  --violet:      #8b5cf6;
+  --orange:      #f97316;
+  --text:        #e2e8f0;
+  --muted:       #64748b;
+  --dim:         #334155;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+
+body {
+  background:var(--ocean-deep);
+  color:var(--text);
+  font-family:'Rajdhani',sans-serif;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* subtle animated ocean background */
+body::before {
+  content:'';
+  position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 40%, rgba(6,182,212,0.05) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 80% at 85% 70%, rgba(20,184,166,0.04) 0%, transparent 70%);
+  animation: drift 12s ease-in-out infinite alternate;
+  pointer-events:none;z-index:0;
+}
+@keyframes drift {
+  from{opacity:0.6} to{opacity:1}
+}
+
+/* ── HEADER ── */
+header {
+  position:sticky;top:0;z-index:200;
+  background:rgba(6,13,26,0.92);
+  backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--border);
+  padding:14px 28px;
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;
+}
+.logo {
+  display:flex;align-items:center;gap:14px;
+}
+.logo-icon {
+  width:38px;height:38px;
+  background:linear-gradient(135deg,var(--cyan),var(--teal));
+  border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;flex-shrink:0;
+}
+.logo-text h1 {
+  font-size:18px;font-weight:700;letter-spacing:1.5px;
+  text-transform:uppercase;
+  background:linear-gradient(90deg,var(--text),var(--cyan));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.logo-text p {
+  font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;
+}
+.header-badges {
+  display:flex;gap:10px;flex-wrap:wrap;
+}
+.badge {
+  padding:5px 12px;border-radius:4px;
+  font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+  border:1px solid;
+}
+.badge-cyan  {border-color:var(--cyan);color:var(--cyan);background:rgba(6,182,212,0.08);}
+.badge-gold  {border-color:var(--gold);color:var(--gold);background:rgba(240,180,41,0.08);}
+.badge-green {border-color:var(--green);color:var(--green);background:rgba(34,197,94,0.08);}
+.badge-red   {border-color:var(--coral);color:var(--coral);background:rgba(244,63,94,0.08);}
+
+/* ── MAIN LAYOUT ── */
+.layout {
+  position:relative;z-index:1;
+  display:grid;
+  grid-template-columns:300px 1fr 260px;
+  gap:0;
+  height:calc(100vh - 67px);
+}
+
+/* ── SIDEBARS ── */
+.sidebar {
+  background:var(--panel);
+  border-right:1px solid var(--border);
+  overflow-y:auto;
+  display:flex;flex-direction:column;
+  scrollbar-width:thin;
+  scrollbar-color:var(--border) transparent;
+}
+.sidebar-right {
+  border-right:none;
+  border-left:1px solid var(--border);
+}
+
+.s-section {
+  padding:16px;
+  border-bottom:1px solid var(--border);
+}
+.s-title {
+  font-size:9px;font-weight:700;letter-spacing:3px;
+  text-transform:uppercase;color:var(--gold);
+  margin-bottom:12px;
+  display:flex;align-items:center;gap:8px;
+}
+.s-title::after {
+  content:'';flex:1;height:1px;
+  background:linear-gradient(90deg,var(--border),transparent);
+}
+
+/* Mode selector */
+.mode-grid {
+  display:grid;grid-template-columns:1fr 1fr;gap:6px;
+}
+.mode-btn {
+  padding:10px 6px;
+  border:1px solid var(--border);border-radius:6px;
+  background:transparent;
+  color:var(--muted);
+  font-family:'Rajdhani',sans-serif;
+  font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+  cursor:pointer;transition:all 0.2s;text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+}
+.mode-btn .mode-icon{font-size:18px;}
+.mode-btn:hover{border-color:var(--cyan);color:var(--cyan);background:rgba(6,182,212,0.06);}
+.mode-btn.active{border-color:var(--gold);color:var(--gold);background:rgba(240,180,41,0.10);}
+
+/* Port selector */
+.port-list{list-style:none;display:flex;flex-direction:column;gap:4px;}
+.port-item{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 10px;border-radius:5px;cursor:pointer;
+  transition:background 0.15s;border:1px solid transparent;
+  font-size:12px;font-weight:600;
+}
+.port-item:hover{background:rgba(240,180,41,0.07);}
+.port-item.selected-start{background:rgba(244,63,94,0.12);border-color:rgba(244,63,94,0.3);}
+.port-item.selected-end  {background:rgba(20,184,166,0.12);border-color:rgba(20,184,166,0.3);}
+.port-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.port-name{flex:1;}
+.port-rc{font-size:9px;color:var(--muted);font-family:'Fira Code',monospace;}
+
+/* Navigate button */
+.nav-btn {
+  width:100%;padding:13px;margin-top:6px;
+  border-radius:7px;border:none;
+  background:linear-gradient(135deg,var(--cyan),var(--teal));
+  color:#060d1a;
+  font-family:'Rajdhani',sans-serif;
+  font-size:14px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+  cursor:pointer;transition:all 0.25s;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.nav-btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(6,182,212,0.3);}
+.nav-btn:active{transform:translateY(0);}
+.nav-btn:disabled{opacity:0.4;cursor:not-allowed;transform:none;box-shadow:none;}
+
+.clear-btn {
+  width:100%;padding:9px;margin-top:6px;
+  border-radius:6px;
+  border:1px solid var(--border);background:transparent;
+  color:var(--muted);
+  font-family:'Rajdhani',sans-serif;
+  font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;
+  cursor:pointer;transition:all 0.2s;
+}
+.clear-btn:hover{border-color:var(--coral);color:var(--coral);}
+
+/* Status indicator */
+.status-row {
+  display:flex;align-items:center;gap:8px;
+  padding:10px 12px;
+  border-radius:6px;
+  font-size:11px;font-weight:600;
+  border:1px solid;
+  margin-bottom:8px;
+}
+.status-dot {
+  width:8px;height:8px;border-radius:50%;flex-shrink:0;
+}
+.status-idle   {border-color:var(--border);color:var(--muted);}
+.status-idle .status-dot{background:var(--muted);}
+.status-ready  {border-color:rgba(34,197,94,0.4);color:var(--green);background:rgba(34,197,94,0.06);}
+.status-ready .status-dot{background:var(--green);animation:pulse-dot 1.5s ease-in-out infinite;}
+.status-running{border-color:rgba(240,180,41,0.4);color:var(--gold);background:rgba(240,180,41,0.06);}
+.status-running .status-dot{background:var(--gold);animation:pulse-dot 0.8s ease-in-out infinite;}
+.status-done   {border-color:rgba(6,182,212,0.4);color:var(--cyan);background:rgba(6,182,212,0.06);}
+.status-done .status-dot{background:var(--cyan);}
+.status-error  {border-color:rgba(244,63,94,0.4);color:var(--coral);background:rgba(244,63,94,0.06);}
+.status-error .status-dot{background:var(--coral);}
+
+@keyframes pulse-dot {
+  0%,100%{opacity:1;transform:scale(1);}
+  50%{opacity:0.4;transform:scale(0.7);}
+}
+
+/* Stats cards */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.stat-card{
+  background:var(--panel2);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:10px 8px;text-align:center;
+}
+.stat-val{
+  font-size:22px;font-weight:700;
+  font-family:'Rajdhani',sans-serif;
+  color:var(--gold);line-height:1;
+}
+.stat-lbl{font-size:9px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-top:3px;}
+
+/* Legend */
+.legend-items{display:flex;flex-direction:column;gap:6px;}
+.leg-row{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);}
+.leg-sw{width:16px;height:12px;border-radius:2px;flex-shrink:0;}
+
+/* Inspector */
+.inspector{
+  font-size:11px;
+  display:flex;flex-direction:column;gap:5px;
+}
+.insp-row{
+  display:flex;justify-content:space-between;
+  padding:4px 0;
+  border-bottom:1px solid rgba(26,45,69,0.5);
+}
+.insp-key{color:var(--muted);}
+.insp-val{color:var(--text);font-weight:600;font-family:'Fira Code',monospace;font-size:10px;}
+
+/* Route log */
+.route-log{
+  max-height:220px;overflow-y:auto;
+  font-family:'Fira Code',monospace;
+  font-size:9px;color:var(--muted);
+  line-height:1.8;
+  scrollbar-width:thin;
+  scrollbar-color:var(--border) transparent;
+}
+.log-entry{
+  padding:1px 0;
+  transition:color 0.1s;
+}
+.log-entry.highlight{color:var(--cyan);}
+.log-entry.log-goal{color:var(--green);font-weight:600;}
+.log-entry.log-bump{color:var(--coral);}
+
+/* ── MAP AREA ── */
+.map-area {
+  position:relative;
+  overflow:hidden;
+  background:var(--ocean-deep);
+  display:flex;flex-direction:column;
+}
+
+.map-topbar{
+  position:absolute;top:12px;left:12px;right:12px;
+  display:flex;align-items:flex-start;justify-content:space-between;
+  z-index:50;pointer-events:none;
+}
+
+canvas {
+  display:block;
+  width:100%;height:100%;
+  cursor:crosshair;
+  image-rendering:pixelated;
+}
+
+/* Compass */
+.compass{
+  width:52px;height:52px;
+  background:rgba(6,13,26,0.75);
+  border:1px solid var(--border);
+  border-radius:50%;
+  backdrop-filter:blur(6px);
+  pointer-events:none;
+  flex-shrink:0;
+}
+
+/* Coord bar */
+.coord-bar{
+  position:absolute;bottom:12px;left:50%;transform:translateX(-50%);
+  background:rgba(6,13,26,0.85);
+  border:1px solid var(--border);border-radius:20px;
+  padding:5px 16px;
+  font-size:10px;font-family:'Fira Code',monospace;
+  color:var(--teal);letter-spacing:1px;
+  z-index:50;
+  white-space:nowrap;
+  backdrop-filter:blur(8px);
+}
+
+/* Instruction overlay */
+.instruction-overlay{
+  position:absolute;
+  bottom:48px;left:50%;transform:translateX(-50%);
+  background:rgba(6,13,26,0.9);
+  border:1px solid var(--border);border-radius:8px;
+  padding:10px 20px;
+  font-size:12px;color:var(--muted);
+  z-index:50;text-align:center;
+  white-space:nowrap;
+  backdrop-filter:blur(8px);
+  transition:opacity 0.3s;
+}
+.instruction-overlay span{color:var(--gold);}
+
+/* Progress bar */
+.progress-bar-wrap{
+  position:absolute;bottom:0;left:0;right:0;
+  height:3px;background:rgba(26,45,69,0.5);z-index:60;
+}
+.progress-bar{
+  height:100%;width:0%;
+  background:linear-gradient(90deg,var(--cyan),var(--teal));
+  transition:width 0.15s linear;
+}
+
+/* Animations */
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
+.sidebar .s-section{animation:fadeUp 0.5s ease forwards;}
+.sidebar .s-section:nth-child(2){animation-delay:.05s;}
+.sidebar .s-section:nth-child(3){animation-delay:.1s;}
+.sidebar .s-section:nth-child(4){animation-delay:.15s;}
+.sidebar .s-section:nth-child(5){animation-delay:.2s;}
+.sidebar-right .s-section:nth-child(1){animation-delay:.05s;}
+.sidebar-right .s-section:nth-child(2){animation-delay:.1s;}
+.sidebar-right .s-section:nth-child(3){animation-delay:.15s;}
+.sidebar-right .s-section:nth-child(4){animation-delay:.2s;}
+
+/* Mobile */
+@media(max-width:900px){
+  .layout{grid-template-columns:1fr;grid-template-rows:auto 55vh auto;}
+  .sidebar{border-right:none;border-bottom:1px solid var(--border);}
+  .sidebar-right{border-left:none;border-top:1px solid var(--border);}
+}
+
+/* Tooltip */
+#tip{
+  position:fixed;
+  background:rgba(6,13,26,0.95);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:7px 11px;
+  font-size:10px;
+  pointer-events:none;
+  z-index:999;
+  display:none;
+  color:var(--text);
+  line-height:1.7;
+  backdrop-filter:blur(8px);
+  max-width:180px;
+}
+
+/* Reached goal flash */
+@keyframes goal-flash{
+  0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,0);}
+  50%{box-shadow:0 0 30px 10px rgba(34,197,94,0.25);}
+}
+.goal-reached .map-area{animation:goal-flash 1s ease 3;}
+</style>
+</head>
+<body>
+
+<div id="tip"></div>
+
+<!-- ── HEADER ── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🚢</div>
+    <div class="logo-text">
+      <h1>Naval Navigator</h1>
+      <p>Deep Reinforcement Learning · Indian Ocean Region</p>
+    </div>
+  </div>
+  <div class="header-badges">
+    <div class="badge badge-cyan">DDQN Agent</div>
+    <div class="badge badge-gold">100×100 Grid</div>
+    <div class="badge badge-green" id="modelBadge">Loading...</div>
+    <div class="badge badge-red">~44 km/cell</div>
+  </div>
+</header>
+
+<!-- ── MAIN LAYOUT ── -->
+<div class="layout" id="mainLayout">
+
+  <!-- LEFT SIDEBAR -->
+  <div class="sidebar">
+
+    <!-- Mode -->
+    <div class="s-section">
+      <div class="s-title">Navigation Mode</div>
+      <div class="mode-grid">
+        <button class="mode-btn active" id="btnFree" onclick="setPickMode('free')">
+          <span class="mode-icon">🗺️</span>Free Pick
+        </button>
+        <button class="mode-btn" id="btnPort" onclick="setPickMode('port')">
+          <span class="mode-icon">⚓</span>Port Select
+        </button>
+      </div>
+
+      <!-- Free-pick instructions -->
+      <div id="freePickPanel" style="margin-top:12px;">
+        <div class="status-row status-idle" id="startStatus">
+          <div class="status-dot"></div>
+          <span id="startLabel">Click map to set START</span>
+        </div>
+        <div class="status-row status-idle" id="endStatus">
+          <div class="status-dot"></div>
+          <span id="endLabel">Click map to set END</span>
+        </div>
+      </div>
+
+      <!-- Port-pick -->
+      <div id="portPickPanel" style="margin-top:12px;display:none;">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:8px;">
+          Select <span style="color:var(--coral)">Start</span> then
+          <span style="color:var(--teal)">Destination</span> port:
+        </div>
+        <ul class="port-list" id="portList"></ul>
+      </div>
+    </div>
+
+    <!-- Navigate -->
+    <div class="s-section">
+      <div class="s-title">Agent Control</div>
+      <button class="nav-btn" id="navBtn" onclick="runNavigation()" disabled>
+        <span>🧭</span> Navigate
+      </button>
+      <button class="clear-btn" onclick="clearAll()">✕ Clear Route</button>
+      <div style="margin-top:10px;font-size:10px;color:var(--muted);line-height:1.7;">
+        The <strong style="color:var(--text)">DDQN agent</strong> will compute the
+        optimal route using the trained neural network (ε=0 greedy policy).
+      </div>
+    </div>
+
+    <!-- Display controls -->
+    <div class="s-section">
+      <div class="s-title">Display</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);">
+          <span>Animate Route</span>
+          <label style="position:relative;display:inline-block;width:36px;height:20px;">
+            <input type="checkbox" id="animToggle" checked style="opacity:0;width:0;height:0;">
+            <span onclick="document.getElementById('animToggle').click()" style="position:absolute;inset:0;background:var(--border);border-radius:20px;cursor:pointer;transition:.3s;" id="toggleBg"></span>
+          </label>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);">
+          <span>Animation Speed</span>
+          <input type="range" min="1" max="10" value="5" id="speedSlider"
+            style="width:80px;accent-color:var(--gold);">
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);">
+          <span>Grid Lines</span>
+          <input type="range" min="0" max="60" value="15" id="gridOpacity"
+            style="width:80px;accent-color:var(--gold);" oninput="render()">
+        </div>
+      </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="s-section">
+      <div class="s-title">Legend</div>
+      <div class="legend-items">
+        <div class="leg-row"><div class="leg-sw" style="background:#0f2a45"></div>Ocean / Water (0)</div>
+        <div class="leg-row"><div class="leg-sw" style="background:#4a8a3f"></div>Land (1)</div>
+        <div class="leg-row"><div class="leg-sw" style="background:#f43f5e"></div>Start position</div>
+        <div class="leg-row"><div class="leg-sw" style="background:#14b8a6"></div>Destination</div>
+        <div class="leg-row"><div class="leg-sw" style="background:#06b6d4"></div>DDQN route path</div>
+        <div class="leg-row"><div class="leg-sw" style="background:#f0b429"></div>Named port</div>
+        <div class="leg-row"><div class="leg-sw" style="background:#f97316;opacity:0.5"></div>Bump (collision)</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- MAP -->
+  <div class="map-area" id="mapArea">
+    <canvas id="c"></canvas>
+
+    <!-- Compass -->
+    <div class="map-topbar">
+      <div></div>
+      <svg class="compass" viewBox="0 0 60 60">
+        <circle cx="30" cy="30" r="27" stroke="rgba(240,180,41,0.15)" stroke-width="1" fill="none"/>
+        <polygon points="30,5 33,27 30,31 27,27" fill="#f0b429" opacity="0.9"/>
+        <polygon points="30,55 33,33 30,29 27,33" fill="rgba(240,180,41,0.25)"/>
+        <circle cx="30" cy="30" r="2.5" fill="#f0b429"/>
+        <text x="30" y="17" text-anchor="middle" fill="#f0b429" font-size="7" font-family="Rajdhani" font-weight="700">N</text>
+        <text x="30" y="50" text-anchor="middle" fill="rgba(240,180,41,0.4)" font-size="6" font-family="Rajdhani">S</text>
+        <text x="9"  y="33" text-anchor="middle" fill="rgba(240,180,41,0.4)" font-size="6" font-family="Rajdhani">W</text>
+        <text x="51" y="33" text-anchor="middle" fill="rgba(240,180,41,0.4)" font-size="6" font-family="Rajdhani">E</text>
+      </svg>
+    </div>
+
+    <div class="coord-bar" id="coordBar">Hover over grid to inspect</div>
+
+    <div class="instruction-overlay" id="instrOverlay">
+      <span>Click</span> any water cell to set <span>Start</span> →
+      then click another to set <span>Destination</span>
+    </div>
+
+    <div class="progress-bar-wrap"><div class="progress-bar" id="progBar"></div></div>
+  </div>
+
+  <!-- RIGHT SIDEBAR -->
+  <div class="sidebar sidebar-right">
+
+    <!-- Status -->
+    <div class="s-section">
+      <div class="s-title">Mission Status</div>
+      <div class="status-row status-idle" id="missionStatus">
+        <div class="status-dot"></div>
+        <span id="missionLabel">Awaiting coordinates</span>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="s-section">
+      <div class="s-title">Route Statistics</div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-val" id="statSteps">—</div>
+          <div class="stat-lbl">Steps</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="statKm">—</div>
+          <div class="stat-lbl">Est. km</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="statBumps">—</div>
+          <div class="stat-lbl">Bumps</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="statReward">—</div>
+          <div class="stat-lbl">Reward</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;" id="goalResult"></div>
+    </div>
+
+    <!-- Cell Inspector -->
+    <div class="s-section">
+      <div class="s-title">Cell Inspector</div>
+      <div class="inspector" id="inspector">
+        <div style="color:var(--muted);font-size:11px;text-align:center;padding:8px 0;">
+          Hover over any cell
+        </div>
+      </div>
+    </div>
+
+    <!-- Route Log -->
+    <div class="s-section" style="flex:1;">
+      <div class="s-title">Route Log</div>
+      <div class="route-log" id="routeLog">
+        <div style="color:var(--muted);font-size:10px;">Route steps will appear here...</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════
+//  GRID DATA  — fetched from /grid API
+// ════════════════════════════════════════════════
+let GRID = null;
+let PORTS = {};
+const ROWS = 100, COLS = 100;
+
+const PORT_COLORS = {
+  "Mumbai":        "#f43f5e",
+  "Visakhapatnam": "#14b8a6",
+  "Chennai":       "#f97316",
+  "Kochi":         "#8b5cf6",
+  "Colombo":       "#ec4899",
+  "Karachi":       "#22c55e",
+  "Goa":           "#f0b429",
+};
+
+// ════════════════════════════════════════════════
+//  STATE
+// ════════════════════════════════════════════════
+let startCell = null;   // [r,c]
+let endCell   = null;   // [r,c]
+let route     = [];     // [[r,c],...]
+let bumpCells = [];     // cells where bumps occurred
+let animFrame = null;
+let hoveredCell = null;
+let pickMode  = 'free'; // 'free' | 'port'
+let portPickStep = 0;   // 0=pick start, 1=pick end
+let animating = false;
+
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+// ════════════════════════════════════════════════
+//  CANVAS SIZING
+// ════════════════════════════════════════════════
+let cellW, cellH;
+
+function resizeCanvas() {
+  const area = document.getElementById('mapArea');
+  canvas.width  = area.clientWidth;
+  canvas.height = area.clientHeight;
+  cellW = canvas.width  / COLS;
+  cellH = canvas.height / ROWS;
+  if (GRID) render();
+}
+
+window.addEventListener('resize', resizeCanvas);
+
+// ════════════════════════════════════════════════
+//  FETCH GRID FROM BACKEND
+// ════════════════════════════════════════════════
+async function loadGrid() {
+  try {
+    const res  = await fetch('/grid');
+    const data = await res.json();
+    GRID  = data.grid;
+    PORTS = data.ports;
+    buildPortList();
+    resizeCanvas();
+    render();
+
+    // Check health
+    const h = await fetch('/health');
+    const hd = await h.json();
+    const badge = document.getElementById('modelBadge');
+    if (hd.model_loaded) {
+      badge.textContent = 'Model Loaded ✓';
+      badge.className   = 'badge badge-green';
+    } else {
+      badge.textContent = 'Random Weights';
+      badge.className   = 'badge badge-red';
+    }
+  } catch(e) {
+    console.error('Failed to load grid:', e);
+    document.getElementById('modelBadge').textContent = 'API Error';
+  }
+}
+
+// ════════════════════════════════════════════════
+//  RENDER
+// ════════════════════════════════════════════════
+let routeDrawnUpto = 0;  // for animation
+
+function render(routeUpTo = null) {
+  if (!GRID) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const limit = routeUpTo !== null ? routeUpTo : route.length;
+
+  // ── Cells ──
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x = c * cellW, y = r * cellH;
+      if (GRID[r][c] === 1) {
+        const shade = ((r*7+c*11) % 18) - 9;
+        const g = Math.min(170, Math.max(100, 138 + shade));
+        ctx.fillStyle = `rgb(55,${g},48)`;
+      } else {
+        const d = Math.min(1,(r+c)/150);
+        ctx.fillStyle = `rgb(8,${Math.floor(25+d*20)},${Math.floor(55+d*25)})`;
+      }
+      ctx.fillRect(x, y, cellW, cellH);
+    }
+  }
+
+  // ── Grid lines ──
+  const gl = parseInt(document.getElementById('gridOpacity').value) / 100;
+  if (gl > 0.01) {
+    ctx.strokeStyle = `rgba(26,45,69,${gl})`;
+    ctx.lineWidth   = 0.5;
+    for (let r = 0; r <= ROWS; r++) {
+      ctx.beginPath(); ctx.moveTo(0,r*cellH); ctx.lineTo(canvas.width,r*cellH); ctx.stroke();
+    }
+    for (let c = 0; c <= COLS; c++) {
+      ctx.beginPath(); ctx.moveTo(c*cellW,0); ctx.lineTo(c*cellW,canvas.height); ctx.stroke();
+    }
+  }
+
+  // ── Route path ──
+  if (limit > 1) {
+    ctx.strokeStyle = 'rgba(6,182,212,0.85)';
+    ctx.lineWidth   = Math.max(1.5, cellW * 0.5);
+    ctx.lineJoin    = 'round';
+    ctx.lineCap     = 'round';
+    ctx.beginPath();
+    ctx.moveTo(route[0][1]*cellW+cellW/2, route[0][0]*cellH+cellH/2);
+    for (let i = 1; i < limit; i++) {
+      ctx.lineTo(route[i][1]*cellW+cellW/2, route[i][0]*cellH+cellH/2);
+    }
+    ctx.stroke();
+
+    // Trail dots
+    ctx.fillStyle = 'rgba(6,182,212,0.5)';
+    for (let i = 1; i < limit-1; i++) {
+      ctx.beginPath();
+      ctx.arc(route[i][1]*cellW+cellW/2, route[i][0]*cellH+cellH/2,
+              Math.max(1, cellW*0.18), 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  // ── Named ports ──
+  for (const [name, pos] of Object.entries(PORTS)) {
+    const pr = pos[0], pc = pos[1];
+    const x  = pc*cellW+cellW/2, y = pr*cellH+cellH/2;
+    const col = PORT_COLORS[name] || '#f0b429';
+    const rad = Math.max(3, cellW*0.7);
+    // Glow
+    const g = ctx.createRadialGradient(x,y,0,x,y,rad*3);
+    g.addColorStop(0, col+'88'); g.addColorStop(1, col+'00');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x,y,rad*3,0,Math.PI*2); ctx.fill();
+    // Dot
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(x,y,rad,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 1; ctx.stroke();
+    // Label
+    if (cellW >= 4) {
+      ctx.fillStyle = 'white';
+      ctx.font = `bold ${Math.max(8,cellW-1)}px Rajdhani`;
+      ctx.textAlign = 'left';
+      ctx.shadowColor='rgba(0,0,0,0.9)'; ctx.shadowBlur=4;
+      ctx.fillText(name, x+rad+2, y+3);
+      ctx.shadowBlur=0; ctx.textAlign='center';
+    }
+  }
+
+  // ── Start marker ──
+  if (startCell) drawMarker(startCell[0], startCell[1], '#f43f5e', '▲', 'START');
+
+  // ── End marker ──
+  if (endCell) drawMarker(endCell[0], endCell[1], '#14b8a6', '★', 'END');
+
+  // ── Ship (current animation position) ──
+  if (animating && limit > 0 && limit <= route.length) {
+    const sr = route[limit-1][0], sc = route[limit-1][1];
+    drawShip(sr, sc);
+  } else if (!animating && route.length > 0) {
+    // Draw ship at final position
+    drawShip(route[route.length-1][0], route[route.length-1][1]);
+  }
+
+  // ── Hover ──
+  if (hoveredCell) {
+    ctx.fillStyle = 'rgba(240,180,41,0.18)';
+    ctx.fillRect(hoveredCell[1]*cellW, hoveredCell[0]*cellH, cellW, cellH);
+    ctx.strokeStyle = 'rgba(240,180,41,0.5)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(hoveredCell[1]*cellW, hoveredCell[0]*cellH, cellW, cellH);
+  }
+}
+
+function drawMarker(r, c, colour, symbol, label) {
+  const x = c*cellW+cellW/2, y = r*cellH+cellH/2;
+  const rad = Math.max(5, cellW*1.1);
+  // Outer glow
+  const g = ctx.createRadialGradient(x,y,0,x,y,rad*2.5);
+  g.addColorStop(0, colour+'66'); g.addColorStop(1, colour+'00');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x,y,rad*2.5,0,Math.PI*2); ctx.fill();
+  // Circle
+  ctx.fillStyle   = colour;
+  ctx.beginPath(); ctx.arc(x,y,rad,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'white'; ctx.lineWidth=1.5; ctx.stroke();
+  // Symbol
+  ctx.fillStyle = 'white';
+  ctx.font = `bold ${Math.max(8,cellW)}px Rajdhani`;
+  ctx.textAlign = 'center'; ctx.textBaseline='middle';
+  ctx.fillText(symbol, x, y);
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawShip(r, c) {
+  const x = c*cellW+cellW/2, y = r*cellH+cellH/2;
+  const rad = Math.max(4, cellW*0.9);
+  // Pulsing glow
+  const now = Date.now()/600;
+  const pulse = 0.5 + 0.5*Math.sin(now);
+  const g = ctx.createRadialGradient(x,y,0,x,y,rad*(2+pulse));
+  g.addColorStop(0,'rgba(6,182,212,0.7)'); g.addColorStop(1,'rgba(6,182,212,0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,rad*(2+pulse),0,Math.PI*2); ctx.fill();
+  // Ship dot
+  ctx.fillStyle='#06b6d4';
+  ctx.beginPath(); ctx.arc(x,y,rad,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='white'; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.fillStyle='white';
+  ctx.font=`bold ${Math.max(7,cellW-1)}px Rajdhani`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('🚢', x, y);
+  ctx.textBaseline='alphabetic';
+}
+
+// ════════════════════════════════════════════════
+//  ANIMATION
+// ════════════════════════════════════════════════
+function animateRoute() {
+  if (!document.getElementById('animToggle').checked) {
+    render(route.length);
+    setStatus('done');
+    updateStats();
+    return;
+  }
+
+  const speed = parseInt(document.getElementById('speedSlider').value);
+  const stepsPerFrame = Math.max(1, Math.floor(speed * 0.8));
+  let drawn = 0;
+  animating = true;
+
+  function frame() {
+    drawn = Math.min(drawn + stepsPerFrame, route.length);
+    render(drawn);
+    document.getElementById('progBar').style.width = `${(drawn/route.length)*100}%`;
+    updateRouteLog(drawn);
+
+    if (drawn < route.length) {
+      animFrame = requestAnimationFrame(frame);
+    } else {
+      animating = false;
+      updateStats();
+      setStatus('done');
+      document.getElementById('progBar').style.width = '100%';
+      // Flash if reached goal
+      if (lastResult && lastResult.reached_goal) {
+        document.getElementById('mapArea').style.boxShadow='0 0 40px rgba(34,197,94,0.4)';
+        setTimeout(()=>document.getElementById('mapArea').style.boxShadow='',2000);
+      }
+    }
+  }
+  animFrame = requestAnimationFrame(frame);
+}
+
+// ════════════════════════════════════════════════
+//  MOUSE EVENTS
+// ════════════════════════════════════════════════
+function getCellFromEvent(e) {
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (canvas.width  / rect.width);
+  const y = (e.clientY - rect.top)  * (canvas.height / rect.height);
+  const c = Math.floor(x / cellW);
+  const r = Math.floor(y / cellH);
+  if (r>=0 && r<ROWS && c>=0 && c<COLS) return [r,c];
+  return null;
+}
+
+canvas.addEventListener('mousemove', e => {
+  const cell = getCellFromEvent(e);
+  if (!cell) { hoveredCell=null; render(); return; }
+  const [r,c] = cell;
+  hoveredCell = cell;
+
+  // Coord bar
+  const lat = (35 - r*0.4).toFixed(1);
+  const lon = (60 + c*0.4).toFixed(1);
+  document.getElementById('coordBar').textContent =
+    `Row ${r}  Col ${c}  ·  ${lat}°N  ${lon}°E  ·  ${GRID[r][c]===1?'🟫 Land':'🌊 Water'}`;
+
+  // Tooltip
+  const tip = document.getElementById('tip');
+  const isLand = GRID[r][c]===1;
+  const nearPort = findNearestPort(r,c);
+  tip.style.display = 'block';
+  tip.style.left = (e.clientX+14)+'px';
+  tip.style.top  = (e.clientY-10)+'px';
+  tip.innerHTML = `<strong style="color:${isLand?'#5a9e4b':'#06b6d4'}">${isLand?'🟫 Land (1)':'🌊 Water (0)'}</strong><br>
+    Row: ${r} · Col: ${c}<br>
+    ${lat}°N · ${lon}°E
+    ${nearPort?`<br><strong style="color:#f0b429">⚓ ${nearPort}</strong>`:''}`;
+
+  // Inspector
+  document.getElementById('inspector').innerHTML = `
+    <div class="insp-row"><span class="insp-key">Cell</span><span class="insp-val">(${r}, ${c})</span></div>
+    <div class="insp-row"><span class="insp-key">Type</span><span class="insp-val" style="color:${isLand?'#5a9e4b':'#06b6d4'}">${isLand?'Land':'Water'}</span></div>
+    <div class="insp-row"><span class="insp-key">Value</span><span class="insp-val">${GRID[r][c]}</span></div>
+    <div class="insp-row"><span class="insp-key">Lat</span><span class="insp-val">${lat}° N</span></div>
+    <div class="insp-row"><span class="insp-key">Lon</span><span class="insp-val">${lon}° E</span></div>
+    ${nearPort?`<div class="insp-row"><span class="insp-key">Port</span><span class="insp-val" style="color:#f0b429">${nearPort}</span></div>`:''}
+    ${startCell?`<div class="insp-row"><span class="insp-key">Δ Start</span><span class="insp-val">${Math.round(Math.hypot(r-startCell[0],c-startCell[1])*0.44*44)} km</span></div>`:''}
+  `;
+
+  render();
+});
+
+canvas.addEventListener('mouseleave', () => {
+  hoveredCell = null;
+  document.getElementById('tip').style.display='none';
+  document.getElementById('coordBar').textContent='Hover over grid to inspect';
+  render();
+});
+
+canvas.addEventListener('click', e => {
+  if (pickMode !== 'free') return;
+  const cell = getCellFromEvent(e);
+  if (!cell) return;
+  const [r,c] = cell;
+  if (GRID[r][c]===1) { showInstr('⚠️ That cell is land — pick a water cell (🌊)'); return; }
+
+  if (!startCell) {
+    startCell = cell;
+    updateStartEndStatus();
+  } else if (!endCell) {
+    if (r===startCell[0] && c===startCell[1]) { showInstr('⚠️ Start and end must differ'); return; }
+    endCell = cell;
+    updateStartEndStatus();
+  } else {
+    // Reset
+    startCell = cell; endCell = null; route = [];
+    updateStartEndStatus();
+  }
+  render();
+  checkNavReady();
+});
+
+// ════════════════════════════════════════════════
+//  PICK MODE
+// ════════════════════════════════════════════════
+function setPickMode(m) {
+  pickMode = m;
+  document.getElementById('btnFree').classList.toggle('active', m==='free');
+  document.getElementById('btnPort').classList.toggle('active', m==='port');
+  document.getElementById('freePickPanel').style.display  = m==='free'  ? 'block':'none';
+  document.getElementById('portPickPanel').style.display  = m==='port'  ? 'block':'none';
+}
+
+function buildPortList() {
+  const ul = document.getElementById('portList');
+  ul.innerHTML = '';
+  portPickStep = 0;
+  for (const [name, pos] of Object.entries(PORTS)) {
+    const col = PORT_COLORS[name]||'#f0b429';
+    const li = document.createElement('li');
+    li.className = 'port-item';
+    li.id = `port-${name}`;
+    li.innerHTML = `
+      <div class="port-dot" style="background:${col}"></div>
+      <span class="port-name">${name}</span>
+      <span class="port-rc">(${pos[0]},${pos[1]})</span>`;
+    li.onclick = () => selectPort(name, pos[0], pos[1]);
+    ul.appendChild(li);
+  }
+}
+
+function selectPort(name, r, c) {
+  if (!startCell || (startCell && endCell)) {
+    startCell = [r,c]; endCell = null;
+    document.querySelectorAll('.port-item').forEach(el=>el.classList.remove('selected-start','selected-end'));
+    document.getElementById(`port-${name}`).classList.add('selected-start');
+  } else {
+    if (r===startCell[0]&&c===startCell[1]) return;
+    endCell = [r,c];
+    document.getElementById(`port-${name}`).classList.add('selected-end');
+  }
+  render(); checkNavReady();
+}
+
+// ════════════════════════════════════════════════
+//  NAVIGATION  — API call
+// ════════════════════════════════════════════════
+let lastResult = null;
+
+async function runNavigation() {
+  if (!startCell || !endCell) return;
+  if (animFrame) { cancelAnimationFrame(animFrame); animFrame=null; }
+  route=[]; bumpCells=[];
+  document.getElementById('navBtn').disabled = true;
+  document.getElementById('routeLog').innerHTML = '<div style="color:var(--gold)">🧭 Computing route...</div>';
+  document.getElementById('progBar').style.width='0%';
+  setStatus('running', 'Agent computing route...');
+
+  try {
+    const res = await fetch('/navigate', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        start_row: startCell[0], start_col: startCell[1],
+        goal_row:  endCell[0],   goal_col:  endCell[1],
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      setStatus('error', err.detail || 'API error');
+      document.getElementById('navBtn').disabled=false;
+      return;
+    }
+
+    lastResult = await res.json();
+    route = lastResult.route;
+
+    document.getElementById('instrOverlay').style.opacity='0';
+    buildRouteLog(lastResult);
+    animateRoute();
+
+  } catch(e) {
+    setStatus('error', 'Cannot reach server');
+    document.getElementById('navBtn').disabled=false;
+    console.error(e);
+  } finally {
+    document.getElementById('navBtn').disabled=false;
+  }
+}
+
+function clearAll() {
+  if (animFrame) { cancelAnimationFrame(animFrame); animFrame=null; }
+  startCell=null; endCell=null; route=[]; bumpCells=[];
+  lastResult=null; animating=false;
+  document.getElementById('routeLog').innerHTML='<div style="color:var(--muted);font-size:10px;">Route steps will appear here...</div>';
+  document.getElementById('progBar').style.width='0%';
+  document.getElementById('statSteps').textContent='—';
+  document.getElementById('statKm').textContent='—';
+  document.getElementById('statBumps').textContent='—';
+  document.getElementById('statReward').textContent='—';
+  document.getElementById('goalResult').innerHTML='';
+  document.getElementById('instrOverlay').style.opacity='1';
+  setStatus('idle','Awaiting coordinates');
+  updateStartEndStatus();
+  document.querySelectorAll('.port-item').forEach(el=>el.classList.remove('selected-start','selected-end'));
+  render();
+}
+
+// ════════════════════════════════════════════════
+//  UI HELPERS
+// ════════════════════════════════════════════════
+function setStatus(type, label) {
+  const el = document.getElementById('missionStatus');
+  el.className = `status-row status-${type}`;
+  const map = {
+    idle:'Awaiting coordinates',
+    ready:'Ready — click Navigate',
+    running:'Agent computing route...',
+    done:'Route complete ✓',
+    error:'Error — see console',
+  };
+  document.getElementById('missionLabel').textContent = label || map[type] || type;
+}
+
+function updateStartEndStatus() {
+  const ss = document.getElementById('startStatus');
+  const es = document.getElementById('endStatus');
+  if (startCell) {
+    ss.className='status-row status-ready';
+    document.getElementById('startLabel').textContent=`Start: (${startCell[0]}, ${startCell[1]})`;
+  } else {
+    ss.className='status-row status-idle';
+    document.getElementById('startLabel').textContent='Click map to set START';
+  }
+  if (endCell) {
+    es.className='status-row status-ready';
+    document.getElementById('endLabel').textContent=`End: (${endCell[0]}, ${endCell[1]})`;
+  } else {
+    es.className='status-row status-idle';
+    document.getElementById('endLabel').textContent='Click map to set END';
+  }
+}
+
+function checkNavReady() {
+  const ready = !!(startCell && endCell);
+  document.getElementById('navBtn').disabled = !ready;
+  if (ready) setStatus('ready');
+}
+
+function showInstr(msg) {
+  const el = document.getElementById('instrOverlay');
+  el.innerHTML = msg;
+  el.style.opacity='1';
+  setTimeout(()=>{ el.innerHTML=`<span>Click</span> any water cell to set <span>Start</span> → then click another to set <span>Destination</span>`; },2500);
+}
+
+function updateStats() {
+  if (!lastResult) return;
+  document.getElementById('statSteps').textContent  = lastResult.steps.toLocaleString();
+  document.getElementById('statKm').textContent     = Math.round(lastResult.steps * 44).toLocaleString();
+  document.getElementById('statBumps').textContent  = lastResult.bumps;
+  document.getElementById('statReward').textContent = Math.round(lastResult.total_reward);
+  const gEl = document.getElementById('goalResult');
+  if (lastResult.reached_goal) {
+    gEl.innerHTML=`<div class="status-row status-done"><div class="status-dot"></div>🎯 Destination Reached!</div>`;
+  } else {
+    gEl.innerHTML=`<div class="status-row status-error"><div class="status-dot"></div>Destination not reached (fuel limit)</div>`;
+  }
+}
+
+function buildRouteLog(result) {
+  const log = document.getElementById('routeLog');
+  log.innerHTML = `<div class="log-entry" style="color:var(--gold);margin-bottom:4px;">
+    ── Route: ${result.steps} steps · ${result.bumps} bumps ──</div>`;
+}
+
+function updateRouteLog(upTo) {
+  if (!lastResult || route.length===0) return;
+  const log = document.getElementById('routeLog');
+  const show = Math.min(upTo, route.length);
+  if (show > 0 && show % 10 === 0) {
+    const [r,c] = route[show-1];
+    const entry = document.createElement('div');
+    entry.className = 'log-entry highlight';
+    entry.textContent = `[${String(show).padStart(4,' ')}] → (${String(r).padStart(2,' ')}, ${String(c).padStart(2,' ')})`;
+    log.appendChild(entry);
+    log.scrollTop = log.scrollHeight;
+  }
+  if (show === route.length && lastResult.reached_goal) {
+    const entry = document.createElement('div');
+    entry.className = 'log-entry log-goal';
+    entry.textContent = `✅ GOAL REACHED at step ${show}!`;
+    log.appendChild(entry);
+    log.scrollTop = log.scrollHeight;
+  }
+}
+
+function findNearestPort(r,c) {
+  let best=null, bd=Infinity;
+  for (const [name,pos] of Object.entries(PORTS)) {
+    const d=Math.hypot(r-pos[0],c-pos[1]);
+    if(d<bd){bd=d;best=name;}
+  }
+  return bd<5?best:null;
+}
+
+// Toggle switch style
+document.getElementById('animToggle').addEventListener('change', function() {
+  document.getElementById('toggleBg').style.background = this.checked ? 'var(--teal)' : 'var(--border)';
+});
+
+// ════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════
+loadGrid();
+</script>
+</body>
+</html>
